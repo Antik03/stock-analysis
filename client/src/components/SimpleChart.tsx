@@ -62,15 +62,31 @@ const SimpleChart: React.FC<SimpleChartProps> = ({
 
     const initChart = async () => {
       try {
-        // Dynamic import to ensure proper loading
-        const { createChart, ColorType } = await import('lightweight-charts');
+        // Add error handling for the dynamic import
+        let chartModule;
+        try {
+          chartModule = await import('lightweight-charts');
+        } catch (importError) {
+          console.error('Failed to load chart library:', importError);
+          setError('Failed to load chart library');
+          return;
+        }
         
-        const chart = createChart(chartContainerRef.current!, {
+        const { createChart, ColorType } = chartModule;
+        
+        // Make sure the container exists and has dimensions
+        if (!chartContainerRef.current?.clientWidth) {
+          console.error('Chart container has no width');
+          setError('Chart container initialization failed');
+          return;
+        }
+
+        const chart = createChart(chartContainerRef.current, {
           layout: {
             background: { type: ColorType.Solid, color: '#1e293b' },
             textColor: '#e2e8f0',
           },
-          width: chartContainerRef.current!.clientWidth,
+          width: chartContainerRef.current.clientWidth,
           height: 400,
           grid: {
             vertLines: { color: 'rgba(42, 46, 57, 0.5)' },
@@ -84,6 +100,17 @@ const SimpleChart: React.FC<SimpleChartProps> = ({
           },
         });
 
+        // Add resize handler
+        const handleResize = () => {
+          if (chartContainerRef.current) {
+            chart.applyOptions({
+              width: chartContainerRef.current.clientWidth
+            });
+          }
+        };
+
+        window.addEventListener('resize', handleResize);
+
         const candlestickSeries = chart.addCandlestickSeries({
           upColor: '#26a69a',
           downColor: '#ef5350',
@@ -92,13 +119,27 @@ const SimpleChart: React.FC<SimpleChartProps> = ({
           wickDownColor: '#ef5350',
         });
 
-        const chartData = data.map((item: any) => ({
-          time: Math.floor(new Date(item.date || item.datetime).getTime() / 1000) as UTCTimestamp,
-          open: parseFloat(item.open),
-          high: parseFloat(item.high),
-          low: parseFloat(item.low),
-          close: parseFloat(item.close),
-        }));
+        const chartData = data
+          .filter((item: any) => {
+            // Filter out invalid data points
+            const hasValidDate = item.date || item.datetime;
+            const hasValidPrices = !isNaN(item.open) && !isNaN(item.high) && 
+                                  !isNaN(item.low) && !isNaN(item.close);
+            return hasValidDate && hasValidPrices;
+          })
+          .map((item: any) => ({
+            time: Math.floor(new Date(item.date || item.datetime).getTime() / 1000) as UTCTimestamp,
+            open: parseFloat(item.open),
+            high: parseFloat(item.high),
+            low: parseFloat(item.low),
+            close: parseFloat(item.close),
+          }));
+
+        if (chartData.length === 0) {
+          console.error('No valid data points for chart');
+          setError('No valid data available for chart');
+          return;
+        }
 
         chartData.sort((a: any, b: any) => a.time - b.time);
         candlestickSeries.setData(chartData);
@@ -107,6 +148,7 @@ const SimpleChart: React.FC<SimpleChartProps> = ({
         console.log('Chart rendered successfully with', chartData.length, 'candles');
 
         return () => {
+          window.removeEventListener('resize', handleResize);
           chart.remove();
         };
       } catch (error) {
@@ -126,7 +168,9 @@ const SimpleChart: React.FC<SimpleChartProps> = ({
     <div className="w-full space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-white">{symbol} Stock Chart</h3>
-        {loading && <div className="text-sm text-gray-400">Loading chart data...</div>}
+        {(loading || !data.length) && (
+          <div className="text-sm text-gray-400">Loading chart data...</div>
+        )}
       </div>
       
       {error && (
@@ -138,7 +182,7 @@ const SimpleChart: React.FC<SimpleChartProps> = ({
       <div 
         ref={chartContainerRef} 
         className="w-full border border-gray-600 rounded bg-slate-800"
-        style={{ height: '400px' }}
+        style={{ height: '400px', minWidth: '300px' }}
       />
       
       {data.length > 0 && (

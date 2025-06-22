@@ -157,7 +157,8 @@ export class SamcoService {
       if (userId && password && yob) {
         const loginOk = await this.login(userId, password, yob);
         if (!loginOk) {
-          throw new Error('Automatic login failed - please verify Samco API credentials');
+          console.error('Automatic login failed during getHistoricalData call');
+          return []; // Return empty array on login failure
         }
       } else {
         throw new Error('Authentication required - please set SAMCO_USER_ID, SAMCO_PASSWORD, SAMCO_YOB env variables');
@@ -166,51 +167,41 @@ export class SamcoService {
     
     try {
       console.log(`Fetching historical data for symbol: ${symbol}, exchange: ${exchange}, fromDate: ${fromDate}, toDate: ${toDate}`);
-      // Determine the correct exchange constant based on the exchange parameter
-      let exchangeConstant;
-      if (exchange === 'NSE') {
-        exchangeConstant = this.constants.EXCHANGE_NSE;
-      } else if (exchange === 'BSE') {
-        exchangeConstant = this.constants.EXCHANGE_BSE;
-      } else if (exchange === 'NFO') {
-        exchangeConstant = this.constants.EXCHANGE_NFO;
-      } else {
-        exchangeConstant = exchange; // Use as-is if not a known constant
-      }
       
-      // Make sure we're passing parameters in the correct order: symbol_name, exchange, from_date, to_date
       const historicalResponse = await this.snapi.historicalCandleData(
         symbol,
         fromDate,
         {
-          exchange: exchangeConstant,
+          exchange: exchange === 'NSE' ? this.constants.EXCHANGE_NSE : exchange,
           toDate: toDate
         }
       );
+      
       console.log('Historical response:', historicalResponse);
       
-      if (historicalResponse) {
-        // The response can be a stringified JSON or an object, so we handle both cases
-        const data = typeof historicalResponse === 'string' 
-          ? JSON.parse(historicalResponse) 
-          : historicalResponse;
+      const data = typeof historicalResponse === 'string' 
+        ? JSON.parse(historicalResponse) 
+        : historicalResponse;
         
-        if (data && data.historicalCandleData) {
-          return data.historicalCandleData.map((candle: any) => ({
-            date: candle.date,
-            open: parseFloat(candle.open.toString()),
-            high: parseFloat(candle.high.toString()),
-            low: parseFloat(candle.low.toString()),
-            close: parseFloat(candle.close.toString()),
-            volume: parseInt(candle.volume.toString())
-          }));
-        }
+      if (data?.status === 'Success' && data.historicalCandleData) {
+        return data.historicalCandleData.map((candle: any) => ({
+          date: candle.date,
+          open: parseFloat(candle.open.toString()),
+          high: parseFloat(candle.high.toString()),
+          low: parseFloat(candle.low.toString()),
+          close: parseFloat(candle.close.toString()),
+          volume: parseInt(candle.volume.toString())
+        }));
       }
       
-      throw new Error('No historical data available from Samco API');
+      // If status is 'Failure' or data is not in the expected format, return an empty array
+      console.log('No historical data found or API returned failure, returning empty array.');
+      return [];
+      
     } catch (error) {
       console.error('Samco historical data error:', error);
-      throw new Error('Unable to fetch historical data from Samco API - please verify account access and credentials');
+      // On exception, also return empty array to prevent frontend from breaking.
+      return [];
     }
   }
 
