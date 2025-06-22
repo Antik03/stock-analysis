@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const WEBHOOK_URL = 'https://abhi1234.app.n8n.cloud/webhook-test/4a73c746-83ec-4c1f-bdcd-d681a9769d3c';
+const WEBHOOK_URL = 'https://abhi1234.app.n8n.cloud/webhook/4a73c746-83ec-4c1f-bdcd-d681a9769d3c';
 
 export class AnalysisService {
   async getAnalysis(prompt: string): Promise<any> {

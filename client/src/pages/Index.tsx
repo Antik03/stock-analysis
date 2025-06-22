@@ -10,6 +10,12 @@ import SearchSuggestions from '@/components/SearchSuggestions';
 import Footer from '@/components/Footer';
 import TestStockData from '@/components/TestStockData';
 
+interface AnalysisResult {
+  title: string;
+  content: string;
+  icon: string;
+}
+
 interface AnalysisData {
   ticker: string;
   range: string;
@@ -25,9 +31,12 @@ const Index = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [showChart, setShowChart] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResults, setAnalysisResults] = useState<any[]>([]);
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
+  const [analysisOverview, setAnalysisOverview] = useState<string | null>(null);
+  const [finalCommentary, setFinalCommentary] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showHeaderSuggestions, setShowHeaderSuggestions] = useState(false);
+  const [timeRange, setTimeRange] = useState('1m');
   
   const heroSectionRef = useRef<HTMLDivElement>(null);
   const analysisResultsRef = useRef<HTMLDivElement>(null);
@@ -72,6 +81,10 @@ const Index = () => {
       window.history.pushState(state, '', window.location.pathname);
     }
   }, [currentStep, showChart, currentTicker, searchInput, analysisResults]);
+
+  const handleTimeRangeChange = (range: string) => {
+    setTimeRange(range);
+  };
 
   const handleStartAnalyzing = () => {
     setCurrentStep('search');
@@ -161,6 +174,8 @@ const Index = () => {
     setIsAnalyzing(true);
     setAnalysisError(null);
     setAnalysisResults([]);
+    setAnalysisOverview(null);
+    setFinalCommentary(null);
     
     try {
       const response = await fetch('/api/analysis', {
@@ -169,7 +184,8 @@ const Index = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: `Analyze ${data.ticker} stock comprehensively covering: 1) Trend Analysis, 2) Key Drivers, 3) Support & Resistance levels, 4) Volume Analysis, 5) Market Sentiment, 6) Risk Assessment, 7) Actionable Recommendations. Provide detailed insights for each area.`
+          ticker: data.ticker,
+          prompt: `${data.ticker}, ${data.prompt}`
         }),
       });
 
@@ -193,16 +209,12 @@ const Index = () => {
         analysisData = { overview: analysisResult.output };
       }
       
-      // Create exactly 6 cards from API response - no dummy data
-      const results = [];
+      setAnalysisOverview(analysisData.overview || 'No overview provided.');
+      setFinalCommentary(analysisData['Final Commentary'] || 'No final commentary provided.');
       
-      // Define the exact 6 cards we want in order
+      const results: AnalysisResult[] = [];
+      
       const cardMappings = [
-        {
-          key: 'overview',
-          title: 'Overview',
-          icon: '📋'
-        },
         {
           key: 'MarketSnapshot',
           title: 'Market Snapshot',
@@ -221,16 +233,15 @@ const Index = () => {
         {
           key: 'PriceActionAnalysis',
           title: 'Price Action Analysis',
-          icon: '📉'
+          icon: '💹'
         },
         {
           key: 'StrategyAndRiskAssessment',
           title: 'Strategy & Risk Assessment',
-          icon: '⚠️'
+          icon: '🎯'
         }
       ];
       
-      // Add cards only if data exists in API response
       cardMappings.forEach(mapping => {
         if (analysisData[mapping.key] && analysisData[mapping.key].trim()) {
           results.push({
@@ -241,7 +252,6 @@ const Index = () => {
         }
       });
       
-      // Handle DynamicLevels as a special card
       if (analysisData.DynamicLevels && typeof analysisData.DynamicLevels === 'object') {
         const dynamicLevels = analysisData.DynamicLevels;
         const stopLoss = dynamicLevels.StopLoss || '';
@@ -261,28 +271,27 @@ const Index = () => {
           results.push({
             title: 'Dynamic Trading Levels',
             content: dynamicLevelsContent,
-            icon: '🎯'
+            icon: '📐'
           });
         }
       }
       
-      // Add Final Commentary as the last card if it exists
-      const finalCommentary = analysisData['Final Commentary'] || analysisData.FinalCommentary || '';
-      if (finalCommentary && finalCommentary.trim()) {
-        results.push({
-          title: 'Final Commentary',
-          content: finalCommentary,
-          icon: '💡'
-        });
-      }
-
       setAnalysisResults(results);
+
     } catch (error) {
       console.error('Analysis error:', error);
-      setAnalysisError(error instanceof Error ? error.message : 'Failed to get AI analysis');
-      setAnalysisResults([]);
+      setAnalysisError(error instanceof Error ? error.message : 'An unknown error occurred.');
     } finally {
       setIsAnalyzing(false);
+      if (analysisResultsRef.current) {
+        analysisResultsRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  };
+
+  const handleBackToTop = () => {
+    if (heroSectionRef.current) {
+      heroSectionRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
@@ -386,11 +395,13 @@ const Index = () => {
       
       {/* Chart Section */}
       {currentStep === 'chart' && showChart && (
-        <div className="chart-section slide-up-animation pt-32">
+        <div className="fade-in-section">
           <ChartSection
             ticker={currentTicker}
             onAnalyze={handleAnalyze}
             isAnalyzing={isAnalyzing}
+            timeRange={timeRange}
+            onTimeRangeChange={handleTimeRangeChange}
           />
         </div>
       )}
@@ -415,7 +426,14 @@ const Index = () => {
         <div ref={analysisResultsRef} className="analysis-section slide-up-animation px-4 py-8">
           <div className="max-w-7xl mx-auto">
             <div ref={analysisHeaderRef}>
-              <AnalysisResults results={analysisResults} />
+              <AnalysisResults 
+                results={analysisResults} 
+                overview={analysisOverview} 
+                finalCommentary={finalCommentary} 
+              />
+            </div>
+            <div className="text-center mt-8">
+              <Button onClick={handleBackToTop}>Back to Top</Button>
             </div>
           </div>
         </div>

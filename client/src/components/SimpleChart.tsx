@@ -1,10 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { UTCTimestamp } from 'lightweight-charts';
 
 interface SimpleChartProps {
   symbol: string;
+  timeRange: string;
+  granularity?: string;
 }
 
-const SimpleChart: React.FC<SimpleChartProps> = ({ symbol }) => {
+const SimpleChart: React.FC<SimpleChartProps> = ({
+  symbol,
+  timeRange,
+  granularity = '1d'
+}) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -15,10 +22,25 @@ const SimpleChart: React.FC<SimpleChartProps> = ({ symbol }) => {
       setLoading(true);
       setError(null);
       try {
-        const toDate = new Date().toISOString().split('T')[0];
-        const fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const toDate = new Date();
+        let fromDate = new Date();
+        switch (timeRange) {
+          case '1d': fromDate.setDate(toDate.getDate() - 1); break;
+          case '1w': fromDate.setDate(toDate.getDate() - 7); break;
+          case '1m': fromDate.setMonth(toDate.getMonth() - 1); break;
+          case '3m': fromDate.setMonth(toDate.getMonth() - 3); break;
+          case '1y': fromDate.setFullYear(toDate.getFullYear() - 1); break;
+        }
+
+        const fromDateStr = fromDate.toISOString().split('T')[0];
+        const toDateStr = toDate.toISOString().split('T')[0];
         
-        const response = await fetch(`/api/stock/historical/${symbol}?fromDate=${fromDate}&toDate=${toDate}`);
+        let url = `/api/stock/historical/${symbol}?fromDate=${fromDateStr}&toDate=${toDateStr}`;
+        if (granularity === '1h') {
+          url = `/api/stock/intraday/${symbol}?fromDate=${fromDateStr}&toDate=${toDateStr}&interval=60min`;
+        }
+        
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch data');
         
         const stockData = await response.json();
@@ -33,7 +55,7 @@ const SimpleChart: React.FC<SimpleChartProps> = ({ symbol }) => {
     };
 
     fetchData();
-  }, [symbol]);
+  }, [symbol, timeRange, granularity]);
 
   useEffect(() => {
     if (!chartContainerRef.current || data.length === 0) return;
@@ -71,7 +93,7 @@ const SimpleChart: React.FC<SimpleChartProps> = ({ symbol }) => {
         });
 
         const chartData = data.map((item: any) => ({
-          time: Math.floor(new Date(item.date + 'T00:00:00').getTime() / 1000),
+          time: Math.floor(new Date(item.date || item.datetime).getTime() / 1000) as UTCTimestamp,
           open: parseFloat(item.open),
           high: parseFloat(item.high),
           low: parseFloat(item.low),

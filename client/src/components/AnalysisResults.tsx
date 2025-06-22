@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,9 +11,11 @@ interface AnalysisResult {
 
 interface AnalysisResultsProps {
   results: AnalysisResult[];
+  overview: string | null;
+  finalCommentary: string | null;
 }
 
-const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results }) => {
+const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results, overview, finalCommentary }) => {
   const handleDownloadReport = () => {
     // Create a simple text report
     const reportContent = results.map(result => 
@@ -33,7 +34,7 @@ const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results }) => {
   };
 
   return (
-    <div className="fade-in-section animate-fade-in">
+    <div className="fade-in-section">
       <div className="mb-8 text-center">
         <h2 className="text-3xl font-bold mb-2">AI Analysis Report</h2>
         <p className="text-muted-foreground">Comprehensive insights powered by AI agent</p>
@@ -44,24 +45,23 @@ const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results }) => {
         <div className="flex items-center">
           <div className="flex-1">
             <div className="flex items-center mb-3">
-              <div className="text-2xl mr-3">📊</div>
-              <h3 className="text-xl font-semibold text-foreground">Intro</h3>
+              <div className="text-2xl mr-3">🔍</div>
+              <h3 className="text-xl font-semibold text-foreground">Overview</h3>
             </div>
             <p className="text-muted-foreground leading-relaxed">
-              Based on comprehensive AI analysis, the stock shows strong bullish momentum with positive technical indicators. 
-              Key support levels are well-established, and market sentiment remains favorable with institutional interest. 
-              The analysis suggests a favorable risk-reward ratio for potential investors.
+              {overview}
             </p>
           </div>
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+      {/* Grid of analysis cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         {results.map((result, index) => (
-          <AnalysisCard
-            key={index}
-            title={result.title}
-            content={result.content}
+          <AnalysisCard 
+            key={index} 
+            title={result.title} 
+            content={result.content} 
             icon={result.icon}
             delay={index * 100}
           />
@@ -69,17 +69,15 @@ const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results }) => {
       </div>
       
       {/* Chart data summary card above download button */}
-      <div className="mb-8 glass-effect rounded-2xl p-6 border border-mint/20 bg-gradient-to-r from-mint/10 to-primary/10 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300">
-        <div className="flex items-center justify-center">
-          <div className="text-center">
-            <div className="flex items-center justify-center mb-3">
-              <div className="text-2xl mr-3">📈</div>
-              <h3 className="text-xl font-semibold text-foreground">Chart Data & AI-Powered Insights</h3>
+      <div className="mb-8 glass-effect rounded-2xl p-6 border border-primary/20 bg-gradient-to-r from-card/50 to-card/30 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300">
+        <div className="flex items-center">
+          <div className="flex-1">
+            <div className="flex items-center mb-3">
+              <div className="text-2xl mr-3">⭐</div>
+              <h3 className="text-xl font-semibold text-foreground">Final Commentary</h3>
             </div>
-            <p className="text-muted-foreground leading-relaxed max-w-3xl">
-              This comprehensive analysis combines real-time market data with advanced AI algorithms to provide 
-              you with actionable investment insights. Download the complete report for detailed recommendations 
-              and strategic guidance tailored to your investment goals.
+            <p className="text-muted-foreground leading-relaxed">
+              {finalCommentary}
             </p>
           </div>
         </div>

@@ -1,23 +1,31 @@
-
 import React, { useState } from 'react';
 import StockChart from './StockChart';
 import SimpleChart from './SimpleChart';
 import AnalysisPrompt from './AnalysisPrompt';
+import ChartControls from './ChartControls';
 
 interface ChartSectionProps {
   ticker: string;
   onAnalyze: (data: { ticker: string; range: string; timeframe: string; prompt: string }) => void;
   isAnalyzing: boolean;
+  timeRange: string;
+  onTimeRangeChange: (range: string) => void;
 }
 
-const ChartSection: React.FC<ChartSectionProps> = ({ ticker, onAnalyze, isAnalyzing }) => {
+const ChartSection: React.FC<ChartSectionProps> = ({ 
+  ticker, 
+  onAnalyze, 
+  isAnalyzing,
+  timeRange,
+  onTimeRangeChange,
+}) => {
   const [chartError, setChartError] = useState<string | null>(null);
 
   const handleAnalyze = (prompt: string) => {
     onAnalyze({
       ticker,
-      range: '1M',
-      timeframe: 'daily',
+      range: timeRange,
+      timeframe: '1d', // Default timeframe
       prompt,
     });
   };
@@ -38,6 +46,13 @@ const ChartSection: React.FC<ChartSectionProps> = ({ ticker, onAnalyze, isAnalyz
           </div>
         </div>
         
+        <div className="mb-8">
+          <ChartControls
+            timeRange={timeRange}
+            onTimeRangeChange={onTimeRangeChange}
+          />
+        </div>
+        
         {chartError && (
           <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
             <p className="text-destructive text-sm">{chartError}</p>
@@ -45,7 +60,7 @@ const ChartSection: React.FC<ChartSectionProps> = ({ ticker, onAnalyze, isAnalyz
         )}
         
         <div className="mb-8 fade-in-section" style={{ animationDelay: '0.2s' }}>
-          <SimpleChart symbol={ticker} />
+          <SimpleChart symbol={ticker} timeRange={timeRange} granularity="1d" />
         </div>
         
         <div className="max-w-2xl mx-auto fade-in-section" style={{ animationDelay: '0.4s' }}>
