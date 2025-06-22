@@ -83,17 +83,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Analysis route
   app.post("/api/analysis", async (req, res) => {
     try {
-      const { prompt } = req.body;
+      const { prompt, ticker } = req.body;
       
-      if (!prompt) {
-        return res.status(400).json({ error: "Prompt is required" });
+      if (!prompt || !ticker) {
+        return res.status(400).json({ error: "Prompt and ticker are required" });
       }
 
       console.log('Sending analysis request for prompt:', prompt);
       
       const options = {
         hostname: 'abhi1234.app.n8n.cloud',
-        path: '/webhook-test/4a73c746-83ec-4c1f-bdcd-d681a9769d3c',
+        path: '/webhook/4a73c746-83ec-4c1f-bdcd-d681a9769d3c',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -155,7 +155,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           reject(new Error('Analysis request timed out after 45 seconds'));
         });
 
-        const postData = JSON.stringify({ prompt });
+        const postData = JSON.stringify({
+          prompt: `${ticker}, ${prompt}`
+        });
         console.log('Sending data to webhook:', postData);
         
         req.write(postData);
