@@ -97,20 +97,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': 'Node.js-Analysis-Client'
+          'User-Agent': 'Node.js-Analysis-Client',
+          'Connection': 'keep-alive'  // Explicitly request keep-alive
         },
-        timeout: 45000
+        timeout: 180000,  // 3 minutes
+        keepAlive: true,  // Enable keep-alive
+        keepAliveMsecs: 1000  // Keep-alive ping interval
       };
 
       const analysisData = await new Promise((resolve, reject) => {
         const req = https.request(options, (response) => {
           let data = '';
           
+          // Set response timeout separately from connection timeout
+          response.setTimeout(180000, () => {
+            req.destroy();
+            reject(new Error('Analysis response timed out after 3 minutes'));
+          });
+          
           console.log('Webhook response status:', response.statusCode);
           console.log('Webhook response headers:', response.headers);
           
           response.on('data', (chunk) => {
             data += chunk;
+            // Reset the timeout on data received
+            response.setTimeout(180000);
           });
           
           response.on('end', () => {
@@ -144,19 +155,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         });
 
-        req.on('error', (error) => {
+        // Set up better error handling
+        req.on('error', (error: NodeJS.ErrnoException) => {
           console.error('Webhook request error:', error);
+          if (error.code === 'ECONNRESET' || error.code === 'EPIPE') {
+            reject(new Error('Connection was reset. Please try again.'));
+          } else if (error.code === 'ETIMEDOUT') {
+            reject(new Error('Connection timed out. Please try again.'));
+          } else {
           reject(error);
+          }
         });
 
         req.on('timeout', () => {
           console.error('Webhook request timed out');
           req.destroy();
-          reject(new Error('Analysis request timed out after 45 seconds'));
+          reject(new Error('Analysis request timed out after 3 minutes. Please try again.'));
+        });
+
+        // Set up socket-level error handling
+        req.on('socket', (socket) => {
+          socket.on('error', (error) => {
+            console.error('Socket error:', error);
+            if (!socket.destroyed) {
+              socket.destroy();
+            }
+        });
+
+          socket.on('timeout', () => {
+            console.error('Socket timeout');
+            if (!socket.destroyed) {
+              socket.destroy();
+            }
+          });
         });
 
         const postData = JSON.stringify({
-          prompt: `${ticker}, ${prompt}`
+          prompt: prompt.includes(ticker) ? prompt : `${ticker}, ${prompt}`
         });
         console.log('Sending data to webhook:', postData);
         

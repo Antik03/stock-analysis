@@ -1,6 +1,7 @@
 import React from 'react';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import AnalysisCard from './AnalysisCard';
 
 interface AnalysisResult {
@@ -13,9 +14,55 @@ interface AnalysisResultsProps {
   results: AnalysisResult[];
   overview: string | null;
   finalCommentary: string | null;
+  isAnalyzing: boolean;
 }
 
-const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results, overview, finalCommentary }) => {
+const LoadingState = () => {
+  const [progress, setProgress] = React.useState(0);
+  const [timeElapsed, setTimeElapsed] = React.useState(0);
+  
+  React.useEffect(() => {
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setTimeElapsed(elapsed);
+      // Assuming max 240 seconds (4 minutes), calculate progress
+      const calculatedProgress = Math.min((elapsed / 240) * 100, 98);
+      setProgress(calculatedProgress);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="fade-in-section">
+      <div className="mb-8 text-center">
+        <h2 className="text-3xl font-bold mb-2">Analyzing Stock Data</h2>
+        <p className="text-muted-foreground">Please wait while our AI analyzes the data (typically takes 1.3-2.5 minutes)</p>
+      </div>
+      
+      <div className="max-w-xl mx-auto mb-8">
+        <Progress value={progress} className="h-2 mb-2" />
+        <p className="text-sm text-muted-foreground text-center">
+          Time elapsed: {timeElapsed} seconds
+        </p>
+      </div>
+      
+      <div className="animate-pulse space-y-6">
+        <div className="h-32 bg-muted rounded-2xl" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="h-48 bg-muted rounded-2xl" />
+          <div className="h-48 bg-muted rounded-2xl" />
+          <div className="h-48 bg-muted rounded-2xl" />
+          <div className="h-48 bg-muted rounded-2xl" />
+        </div>
+        <div className="h-32 bg-muted rounded-2xl" />
+      </div>
+    </div>
+  );
+};
+
+const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results, overview, finalCommentary, isAnalyzing }) => {
   const handleDownloadReport = () => {
     // Create a simple text report
     const reportContent = results.map(result => 
@@ -33,6 +80,10 @@ const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results, overview, fi
     URL.revokeObjectURL(url);
   };
 
+  if (isAnalyzing) {
+    return <LoadingState />;
+  }
+
   return (
     <div className="fade-in-section">
       <div className="mb-8 text-center">
@@ -48,9 +99,10 @@ const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results, overview, fi
               <div className="text-2xl mr-3">🔍</div>
               <h3 className="text-xl font-semibold text-foreground">Overview</h3>
             </div>
-            <p className="text-muted-foreground leading-relaxed">
-              {overview}
-            </p>
+            <div 
+              className="text-muted-foreground leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: overview || '' }}
+            />
           </div>
         </div>
       </div>
@@ -58,10 +110,10 @@ const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results, overview, fi
       {/* Grid of analysis cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         {results.map((result, index) => (
-          <AnalysisCard 
-            key={index} 
-            title={result.title} 
-            content={result.content} 
+          <AnalysisCard
+            key={index}
+            title={result.title}
+            content={result.content}
             icon={result.icon}
             delay={index * 100}
           />
@@ -73,12 +125,13 @@ const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results, overview, fi
         <div className="flex items-center">
           <div className="flex-1">
             <div className="flex items-center mb-3">
-              <div className="text-2xl mr-3">⭐</div>
-              <h3 className="text-xl font-semibold text-foreground">Final Commentary</h3>
+              <div className="text-2xl mr-3">🗣️</div>
+              <h3 className="text-xl font-semibold text-foreground">User Query</h3>
             </div>
-            <p className="text-muted-foreground leading-relaxed">
-              {finalCommentary}
-            </p>
+            <div 
+              className="text-muted-foreground leading-relaxed"
+              dangerouslySetInnerHTML={{ __html: finalCommentary || '' }}
+            />
           </div>
         </div>
       </div>

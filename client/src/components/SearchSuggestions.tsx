@@ -6,12 +6,13 @@ interface SearchSuggestionsProps {
   query: string;
   onSelect: (ticker: string) => void;
   isVisible: boolean;
+  nseStocks: Array<{symbol: string, name: string}>;
 }
 
-const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({ query, onSelect, isVisible }) => {
+const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({ query, onSelect, isVisible, nseStocks }) => {
   if (!isVisible || !query.trim()) return null;
 
-  const filteredStocks = searchNSEStocks(query);
+  const filteredStocks = searchNSEStocks(query, nseStocks);
 
   if (filteredStocks.length === 0) {
     return (

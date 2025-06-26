@@ -80,7 +80,7 @@ const SimpleChart: React.FC<SimpleChartProps> = ({
           setError('Chart container initialization failed');
           return;
         }
-
+        
         const chart = createChart(chartContainerRef.current, {
           layout: {
             background: { type: ColorType.Solid, color: '#1e293b' },
@@ -129,11 +129,11 @@ const SimpleChart: React.FC<SimpleChartProps> = ({
           })
           .map((item: any) => ({
             time: Math.floor(new Date(item.date || item.datetime).getTime() / 1000) as UTCTimestamp,
-            open: parseFloat(item.open),
-            high: parseFloat(item.high),
-            low: parseFloat(item.low),
-            close: parseFloat(item.close),
-          }));
+          open: parseFloat(item.open),
+          high: parseFloat(item.high),
+          low: parseFloat(item.low),
+          close: parseFloat(item.close),
+        }));
 
         if (chartData.length === 0) {
           console.error('No valid data points for chart');

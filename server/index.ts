@@ -1,10 +1,23 @@
 import express, { type Request, Response, NextFunction } from "express";
+import timeout from "connect-timeout";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+// Global timeout for all requests
+app.use(timeout('30s'));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Middleware to disable timeout for the analysis route
+app.use('/api/analysis', (req: Request, res: Response, next: NextFunction) => {
+  if (req.clearTimeout) {
+    req.clearTimeout();
+  }
+  next();
+});
 
 app.use((req, res, next) => {
   const start = Date.now();

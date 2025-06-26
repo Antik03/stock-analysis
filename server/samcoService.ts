@@ -25,6 +25,7 @@ export class SamcoService {
   private constants: any;
   private sessionToken: string | null = null;
   private isLoggedIn: boolean = false;
+  private authError: string | null = null;
 
   constructor() {
     this.snapi = stocknotejsbridge.snapi;
@@ -32,6 +33,9 @@ export class SamcoService {
   }
   
   async login(userId: string, password: string, yob: string): Promise<boolean> {
+    if (this.authError) {
+      return false;
+    }
     try {
       const loginBody = {
         body: {
@@ -67,12 +71,16 @@ export class SamcoService {
       
       throw new Error('Login failed - invalid credentials');
     } catch (error) {
+      this.authError = (error instanceof Error ? error.message : 'Unknown authentication error');
       console.error('Samco login error:', error);
       return false;
     }
   }
   
   async getQuote(symbol: string, exchange: string = 'NSE'): Promise<SamcoQuoteData | null> {
+    if (this.authError) {
+      throw new Error(this.authError);
+    }
     if (!this.isLoggedIn) {
       // Attempt auto-login using environment variables so that clients don't need a separate login request.
       const userId = process.env.SAMCO_USER_ID || '';
@@ -148,6 +156,9 @@ export class SamcoService {
     fromDate: string,
     toDate: string
   ): Promise<SamcoHistoricalCandle[] | null> {
+    if (this.authError) {
+      throw new Error(this.authError);
+    }
     if (!this.isLoggedIn) {
       // Attempt auto-login using environment variables so that clients don't need a separate login request.
       const userId = process.env.SAMCO_USER_ID || '';
@@ -179,20 +190,20 @@ export class SamcoService {
       
       console.log('Historical response:', historicalResponse);
       
-      const data = typeof historicalResponse === 'string' 
-        ? JSON.parse(historicalResponse) 
-        : historicalResponse;
+        const data = typeof historicalResponse === 'string' 
+          ? JSON.parse(historicalResponse) 
+          : historicalResponse;
         
       if (data?.status === 'Success' && data.historicalCandleData) {
-        return data.historicalCandleData.map((candle: any) => ({
-          date: candle.date,
-          open: parseFloat(candle.open.toString()),
-          high: parseFloat(candle.high.toString()),
-          low: parseFloat(candle.low.toString()),
-          close: parseFloat(candle.close.toString()),
-          volume: parseInt(candle.volume.toString())
-        }));
-      }
+          return data.historicalCandleData.map((candle: any) => ({
+            date: candle.date,
+            open: parseFloat(candle.open.toString()),
+            high: parseFloat(candle.high.toString()),
+            low: parseFloat(candle.low.toString()),
+            close: parseFloat(candle.close.toString()),
+            volume: parseInt(candle.volume.toString())
+          }));
+        }
       
       // If status is 'Failure' or data is not in the expected format, return an empty array
       console.log('No historical data found or API returned failure, returning empty array.');
@@ -212,8 +223,11 @@ export class SamcoService {
     toDate: string,
     interval: '15min' | '60min'
   ): Promise<SamcoHistoricalCandle[] | null> {
-    // Ensure we are logged in and have a session token – reuse the same logic used by getQuote / getHistoricalData
+    if (this.authError) {
+      throw new Error(this.authError);
+    }
     if (!this.isLoggedIn) {
+      // Ensure we are logged in and have a session token – reuse the same logic used by getQuote / getHistoricalData
       const userId = process.env.SAMCO_USER_ID || '';
       const password = process.env.SAMCO_PASSWORD || '';
       const yob = process.env.SAMCO_YOB || '';

@@ -37,11 +37,13 @@ const Index = () => {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showHeaderSuggestions, setShowHeaderSuggestions] = useState(false);
   const [timeRange, setTimeRange] = useState('1m');
+  const [nseStocks, setNseStocks] = useState<Array<{symbol: string, name: string}>>([]);
   
   const heroSectionRef = useRef<HTMLDivElement>(null);
   const analysisResultsRef = useRef<HTMLDivElement>(null);
   const analysisHeaderRef = useRef<HTMLDivElement>(null);
   const headerSearchRef = useRef<HTMLDivElement>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // Handle browser back button
   useEffect(() => {
@@ -64,7 +66,15 @@ const Index = () => {
     };
 
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    
+    // Cleanup polling on unmount
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      if (pollingRef.current) {
+        clearTimeout(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
   }, []);
 
   // Push state when step changes
@@ -81,6 +91,24 @@ const Index = () => {
       window.history.pushState(state, '', window.location.pathname);
     }
   }, [currentStep, showChart, currentTicker, searchInput, analysisResults]);
+
+  // Load NSE stocks data
+  useEffect(() => {
+    const loadNSEStocks = async () => {
+      try {
+        const response = await fetch('/nse_equity_stocks.csv');
+        const text = await response.text();
+        const stocks = text.split('\n').slice(1).map(line => {
+          const [symbol, name] = line.split(',');
+          return { symbol: symbol?.trim(), name: name?.trim() };
+        }).filter(stock => stock.symbol && stock.name);
+        setNseStocks(stocks);
+      } catch (error) {
+        console.error('Failed to load NSE stocks:', error);
+      }
+    };
+    loadNSEStocks();
+  }, []);
 
   const handleTimeRangeChange = (range: string) => {
     setTimeRange(range);
@@ -176,123 +204,232 @@ const Index = () => {
     setAnalysisResults([]);
     setAnalysisOverview(null);
     setFinalCommentary(null);
-    
+
+    // Stop any previous polling
+    if (pollingRef.current) {
+      clearTimeout(pollingRef.current);
+      pollingRef.current = null;
+    }
+
     try {
-      const response = await fetch('/api/analysis', {
+      // 1. Start the analysis job
+      const startResponse = await fetch('https://abhi1234.app.n8n.cloud/webhook/92686492-c65e-4693-a757-67765f04d0fc', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ticker: data.ticker,
-          prompt: `${data.ticker}, ${data.prompt}`
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: `${data.ticker}, ${data.prompt}` }),
       });
 
-      if (!response.ok) {
-        throw new Error('Analysis request failed');
+      if (!startResponse.ok) {
+        throw new Error('Failed to start analysis job');
       }
 
-      const analysisResult = await response.json();
-      console.log('Analysis result received:', analysisResult);
-      
-      // Check if we have valid analysis data
-      if (!analysisResult || !analysisResult.output) {
-        throw new Error('No analysis data received from AI service');
-      }
-      
-      // Parse the nested JSON output from N8N webhook
-      let analysisData;
-      try {
-        analysisData = JSON.parse(analysisResult.output);
-      } catch (e) {
-        analysisData = { overview: analysisResult.output };
-      }
-      
-      setAnalysisOverview(analysisData.overview || 'No overview provided.');
-      setFinalCommentary(analysisData['Final Commentary'] || 'No final commentary provided.');
-      
-      const results: AnalysisResult[] = [];
-      
-      const cardMappings = [
-        {
-          key: 'MarketSnapshot',
-          title: 'Market Snapshot',
-          icon: '📊'
-        },
-        {
-          key: 'NewsAnalysis',
-          title: 'News Analysis',
-          icon: '📰'
-        },
-        {
-          key: 'TechnicalChartInterpretation',
-          title: 'Technical Chart Analysis',
-          icon: '📈'
-        },
-        {
-          key: 'PriceActionAnalysis',
-          title: 'Price Action Analysis',
-          icon: '💹'
-        },
-        {
-          key: 'StrategyAndRiskAssessment',
-          title: 'Strategy & Risk Assessment',
-          icon: '🎯'
-        }
-      ];
-      
-      cardMappings.forEach(mapping => {
-        if (analysisData[mapping.key] && analysisData[mapping.key].trim()) {
-          results.push({
-            title: mapping.title,
-            content: analysisData[mapping.key],
-            icon: mapping.icon
-          });
-        }
-      });
-      
-      if (analysisData.DynamicLevels && typeof analysisData.DynamicLevels === 'object') {
-        const dynamicLevels = analysisData.DynamicLevels;
-        const stopLoss = dynamicLevels.StopLoss || '';
-        const profitTarget = dynamicLevels.ProfitTarget || '';
-        const entryZone = dynamicLevels.EntryZone || '';
-        const exitZone = dynamicLevels.ExitZone || '';
+      const { jobId } = await startResponse.json();
+
+      // 2. Poll for results
+      const poll = async () => {
+        // If polling has been stopped, do nothing
+        if (!pollingRef.current) return;
+
+        try {
+          const statusResponse = await fetch(`https://abhi1234.app.n8n.cloud/webhook/5e25cc8c-8400-4e41-9d61-c4a487a67aea/status/${jobId}`);
+          if (!statusResponse.ok) {
+            console.warn(`Polling request failed with status: ${statusResponse.status}`);
+            // Schedule the next poll even if this one failed
+            pollingRef.current = setTimeout(poll, 10000);
+            return;
+          }
+
+          const resultData = await statusResponse.json();
+          console.log('Poll response:', resultData);
+
+          if (resultData.status === 'done') {
+            // Stop polling immediately
+            if (pollingRef.current) {
+              clearTimeout(pollingRef.current);
+              pollingRef.current = null;
+            }
+
+            try {
+              console.log('Attempting to parse result:', resultData.result);
+              const analysisData = JSON.parse(resultData.result);
+
+              // Helper to format the content for each card
+              const formatCardContent = (key: string, data: any): string => {
+                if (!data) return 'No data available.';
+                let content = [];
+                switch (key) {
+                  case 'MarketSnapshot':
+                    if (data.current_price) content.push(`<strong>Current Price:</strong> ${data.current_price}`);
+                    if (data.day_high_low) content.push(`<strong>Day High/Low:</strong> ${data.day_high_low}`);
+                    if (data['52w_range']) content.push(`<strong>52w Range:</strong> ${data['52w_range']}`);
+                    if (data.previous_close) content.push(`<strong>Previous Close:</strong> ${data.previous_close}`);
+                    if (data.volume) content.push(`<strong>Volume:</strong> ${data.volume.toLocaleString()}`);
+                    if (data['5_day_closes']) content.push(`<strong>5 Day Closes:</strong> ${data['5_day_closes'].join(', ')}`);
+                    if (data.summary) content.push(`<br/><strong>Summary:</strong><br/>${data.summary.replace(/\n/g, '<br/>')}`);
+                    if (data.TimingRecommendation) content.push(`<br/><strong>Timing Recommendation:</strong><br/>${data.TimingRecommendation.replace(/\n/g, '<br/>')}`);
+                    if (data.ResultInterpretation) content.push(`<br/><strong>Result Interpretation:</strong><br/>${data.ResultInterpretation.replace(/\n/g, '<br/>')}`);
+                    return content.join('<br/>');
+                  
+                  case 'FundamentalsAndEvents':
+                    if (data.pe_ratio) content.push(`<strong>P/E Ratio:</strong> ${data.pe_ratio}`);
+                    if (data.roce) content.push(`<strong>ROCE:</strong> ${data.roce}%`);
+                    if (data.upcoming_events && data.upcoming_events.length > 0) {
+                      const events = data.upcoming_events.map((e: any) => `<li>${e.event} (${e.date})</li>`).join('');
+                      content.push(`<br/><strong>Upcoming Events:</strong><ul>${events}</ul>`);
+                    }
+                    if (data.summary) content.push(`<br/><strong>Summary:</strong><br/>${data.summary.replace(/\n/g, '<br/>')}`);
+                    if (data.TimingRecommendation) content.push(`<br/><strong>Timing Recommendation:</strong><br/>${data.TimingRecommendation.replace(/\n/g, '<br/>')}`);
+                    if (data.ResultInterpretation) content.push(`<br/><strong>Result Interpretation:</strong><br/>${data.ResultInterpretation.replace(/\n/g, '<br/>')}`);
+                    return content.join('<br/>');
         
-        if (stopLoss || profitTarget || entryZone || exitZone) {
-          const dynamicLevelsContent = `
-            <div class="space-y-3">
-              ${stopLoss ? `<div class="flex items-center gap-2"><span class="w-3 h-3 bg-red-500 rounded-full"></span><strong>Stop Loss:</strong> <span class="text-red-400">${stopLoss}</span></div>` : ''}
-              ${profitTarget ? `<div class="flex items-center gap-2"><span class="w-3 h-3 bg-green-500 rounded-full"></span><strong>Profit Target:</strong> <span class="text-green-400">${profitTarget}</span></div>` : ''}
-              ${entryZone ? `<div class="flex items-center gap-2"><span class="w-3 h-3 bg-blue-500 rounded-full"></span><strong>Entry Zone:</strong> <span class="text-blue-400">${entryZone}</span></div>` : ''}
-              ${exitZone ? `<div class="flex items-center gap-2"><span class="w-3 h-3 bg-yellow-500 rounded-full"></span><strong>Exit Zone:</strong> <span class="text-yellow-400">${exitZone}</span></div>` : ''}
-            </div>
-          `;
-          results.push({
-            title: 'Dynamic Trading Levels',
-            content: dynamicLevelsContent,
-            icon: '📐'
-          });
-        }
+                  case 'TechnicalChartInterpretation':
+                    if (data.candlestick_pattern) content.push(`<strong>Candlestick Pattern:</strong> ${data.candlestick_pattern}`);
+                    if (data.macd_status) content.push(`<strong>MACD Status:</strong> ${data.macd_status}`);
+                    if (data.rsi_value) content.push(`<strong>RSI Value:</strong> ${data.rsi_value}`);
+                    if (data.support_resistance) content.push(`<strong>Support/Resistance:</strong> ${data.support_resistance.join(', ')}`);
+                    if (data.summary) content.push(`<br/><strong>Summary:</strong><br/>${data.summary.replace(/\n/g, '<br/>')}`);
+                    if (data.TimingRecommendation) content.push(`<br/><strong>Timing Recommendation:</strong><br/>${data.TimingRecommendation.replace(/\n/g, '<br/>')}`);
+                    if (data.ResultInterpretation) content.push(`<br/><strong>Result Interpretation:</strong><br/>${data.ResultInterpretation.replace(/\n/g, '<br/>')}`);
+                    return content.join('<br/>');
+                    
+                  case 'PriceActionAnalysis':
+                    if (data.pattern) content.push(`<strong>Pattern:</strong> ${data.pattern}`);
+                    if (data.key_signals) content.push(`<strong>Key Signals:</strong><ul>${data.key_signals.map((s: string) => `<li>${s}</li>`).join('')}</ul>`);
+                    if (data.summary) content.push(`<br/><strong>Summary:</strong><br/>${data.summary.replace(/\n/g, '<br/>')}`);
+                    if (data.TimingRecommendation) content.push(`<br/><strong>Timing Recommendation:</strong><br/>${data.TimingRecommendation.replace(/\n/g, '<br/>')}`);
+                    if (data.ResultInterpretation) content.push(`<br/><strong>Result Interpretation:</strong><br/>${data.ResultInterpretation.replace(/\n/g, '<br/>')}`);
+                    return content.join('<br/>');
+
+                  case 'StrategyAndRisk':
+                    if (data.stop_loss) content.push(`<strong>Stop Loss:</strong> ${data.stop_loss.price} (${data.stop_loss.pct})`);
+                    if (data.profit_target) content.push(`<strong>Profit Target:</strong> ${data.profit_target.price} (${data.profit_target.pct})`);
+                    if (data.risk_reward) content.push(`<strong>Risk/Reward:</strong> ${data.risk_reward}`);
+                    if (data.entry_zone) content.push(`<strong>Entry Zone:</strong> ${data.entry_zone}`);
+                    if (data.exit_zone) content.push(`<strong>Exit Zone:</strong> ${data.exit_zone}`);
+                    if (data.summary) content.push(`<br/><strong>Summary:</strong><br/>${data.summary.replace(/\n/g, '<br/>')}`);
+                    if (data.TimingRecommendation) content.push(`<br/><strong>Timing Recommendation:</strong><br/>${data.TimingRecommendation.replace(/\n/g, '<br/>')}`);
+                    if (data.ResultInterpretation) content.push(`<br/><strong>Result Interpretation:</strong><br/>${data.ResultInterpretation.replace(/\n/g, '<br/>')}`);
+                    return content.join('<br/>');
+                  
+                  case 'NewsAnalysis':
+                    if (data.summary) content.push(`<strong>Summary:</strong><br/>${data.summary.replace(/\n/g, '<br/>')}`);
+                    if (data.items && data.items.length > 0) {
+                        const newsItems = data.items.map((item: any) => `<li><strong>${item.headline}</strong>: ${item.impact} (<em>${item.sentiment}</em>)</li>`).join('');
+                        content.push(`<br/><strong>News Items:</strong><ul>${newsItems}</ul>`);
+                    }
+                    if (data.TimingRecommendation) content.push(`<br/><strong>Timing Recommendation:</strong><br/>${data.TimingRecommendation.replace(/\n/g, '<br/>')}`);
+                    if (data.ResultInterpretation) content.push(`<br/><strong>Result Interpretation:</strong><br/>${data.ResultInterpretation.replace(/\n/g, '<br/>')}`);
+                    return content.join('<br/>');
+
+                  default:
+                    return JSON.stringify(data, null, 2);
+                }
+              };
+              
+              const icons: { [key: string]: string } = {
+                MarketSnapshot: '📈',
+                FundamentalsAndEvents: '🏦',
+                NewsAnalysis: '📰',
+                TechnicalChartInterpretation: '📊',
+                PriceActionAnalysis: '📉',
+                StrategyAndRisk: '🛡️',
+                ResultInterpretation: analysisData.ResultInterpretation,
+              };
+
+              const cardOrder = [
+                'MarketSnapshot',
+                'FundamentalsAndEvents',
+                'TechnicalChartInterpretation',
+                'PriceActionAnalysis',
+                'StrategyAndRisk',
+                'NewsAnalysis',
+              ];
+
+              // Create a special object for NewsAnalysis card
+              const processedAnalysisData = { ...analysisData };
+              if (analysisData.NewsAnalysis && analysisData.NewsAnalysisSummary) {
+                  processedAnalysisData.NewsAnalysis = {
+                      summary: analysisData.NewsAnalysisSummary,
+                      items: analysisData.NewsAnalysis,
+                      TimingRecommendation: analysisData.TimingRecommendation,
+                      ResultInterpretation: analysisData.ResultInterpretation,
+                  };
+              }
+
+              const results: AnalysisResult[] = cardOrder
+                .filter(key => processedAnalysisData[key])
+                .map(key => ({
+                  title: key.replace(/([A-Z])/g, ' $1').trim(),
+                  content: formatCardContent(key, processedAnalysisData[key]),
+                  icon: icons[key] || '❓',
+                }));
+
+                console.log('Analysis parsed. Updating state.');
+                setAnalysisOverview(analysisData.overview ? analysisData.overview.replace(/\n/g, '<br/>') : 'No overview available.');
+
+                const uqr = analysisData.UserQuestionResponse;
+                if (uqr) {
+                  let commentary = [];
+                  if (uqr.question) commentary.push(`<strong>Question:</strong> ${uqr.question}`);
+                  if (uqr.answer) commentary.push(`<br/><strong>Answer:</strong><br/>${uqr.answer.replace(/\n/g, '<br/>')}`);
+                  if (uqr.summary) commentary.push(`<br/><strong>Summary:</strong><br/>${uqr.summary.replace(/\n/g, '<br/>')}`);
+                  if (uqr.TimingRecommendation) commentary.push(`<br/><strong>Timing Recommendation:</strong><br/>${uqr.TimingRecommendation.replace(/\n/g, '<br/>')}`);
+                  if (uqr.ResultInterpretation) commentary.push(`<br/><strong>Result Interpretation:</strong><br/>${uqr.ResultInterpretation.replace(/\n/g, '<br/>')}`);
+                  setFinalCommentary(commentary.join('<br/>'));
+                } else {
+                  setFinalCommentary('No commentary available.');
       }
-      
+
       setAnalysisResults(results);
+                setIsAnalyzing(false);
+
+                setTimeout(() => {
+                  analysisResultsRef.current?.scrollIntoView({ behavior: 'smooth' });
+                }, 100);
+
+            } catch (parsingError) {
+              console.error('Failed to parse analysis result:', parsingError, 'Raw result:', resultData.result);
+              setAnalysisError('Failed to read analysis result. The data from the server was malformed.');
+              setIsAnalyzing(false);
+            }
+
+          } else if (resultData.status === 'failed' || resultData.status === 'error') {
+            if (pollingRef.current) {
+              clearTimeout(pollingRef.current);
+              pollingRef.current = null;
+            }
+            throw new Error(resultData.error || 'Analysis job failed');
+          } else {
+            // If still processing, poll again after 10 seconds
+            pollingRef.current = setTimeout(poll, 10000);
+          }
 
     } catch (error) {
-      console.error('Analysis error:', error);
-      setAnalysisError(error instanceof Error ? error.message : 'An unknown error occurred.');
-    } finally {
+          console.error('Polling failed:', error);
+          // Keep polling even if there's a parsing error or other issue
+          if (pollingRef.current) {
+            pollingRef.current = setTimeout(poll, 10000);
+          }
+        }
+      };
+
+      // 3. Start polling after initial delay
+      pollingRef.current = setTimeout(poll, 60000); // Start polling after 60 seconds
+
+    } catch (error: any) {
+      console.error('Analysis failed:', error);
+      setAnalysisError(error.message);
       setIsAnalyzing(false);
-      if (analysisResultsRef.current) {
-        analysisResultsRef.current.scrollIntoView({ behavior: 'smooth' });
+      // Clear interval on initial failure
+      if (pollingRef.current) {
+        clearTimeout(pollingRef.current);
+        pollingRef.current = null;
       }
     }
   };
 
   const handleBackToTop = () => {
-    if (heroSectionRef.current) {
-      heroSectionRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    heroSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
@@ -376,7 +513,8 @@ const Index = () => {
                     <SearchSuggestions
                       query={searchInput}
                       onSelect={handleHeaderSuggestionSelect}
-                      isVisible={showHeaderSuggestions && !isSearching}
+                      isVisible={showHeaderSuggestions}
+                      nseStocks={nseStocks}
                     />
                   </div>
                   <Button
@@ -426,11 +564,12 @@ const Index = () => {
         <div ref={analysisResultsRef} className="analysis-section slide-up-animation px-4 py-8">
           <div className="max-w-7xl mx-auto">
             <div ref={analysisHeaderRef}>
-              <AnalysisResults 
-                results={analysisResults} 
-                overview={analysisOverview} 
-                finalCommentary={finalCommentary} 
-              />
+                        <AnalysisResults
+            results={analysisResults}
+            overview={analysisOverview}
+            finalCommentary={finalCommentary}
+            isAnalyzing={isAnalyzing}
+          />
             </div>
             <div className="text-center mt-8">
               <Button onClick={handleBackToTop}>Back to Top</Button>

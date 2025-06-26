@@ -3,7 +3,7 @@ import { Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SearchSuggestions from './SearchSuggestions';
-import { isValidNSETicker } from '@/lib/utils';
+import { isValidNSETicker, fetchNSEStocks } from '@/lib/utils';
 
 interface HeroSectionProps {
   onSearch: (ticker: string) => void;
@@ -13,9 +13,25 @@ interface HeroSectionProps {
 const HeroSection: React.FC<HeroSectionProps> = ({ onSearch, isSearching }) => {
   const [searchInput, setSearchInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [nseStocks, setNseStocks] = useState<Array<{symbol: string, name: string}>>([]);
+  const [stocksLoading, setStocksLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadStocks = async () => {
+      try {
+        const stocks = await fetchNSEStocks();
+        setNseStocks(stocks);
+      } catch (err) {
+        setError("Failed to load stock list. Please check your connection.");
+      } finally {
+        setStocksLoading(false);
+      }
+    };
+    loadStocks();
+  }, []);
 
   const handleSearch = () => {
     const ticker = searchInput.trim().toUpperCase();
@@ -25,13 +41,13 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onSearch, isSearching }) => {
       return;
     }
 
-    if (!isValidNSETicker(ticker)) {
+    if (!isValidNSETicker(ticker, nseStocks)) {
       setError(`"${ticker}" is not a valid NSE stock ticker. Please select from the suggestions.`);
       return;
     }
 
     setError(null);
-    setShowSuggestions(false);
+      setShowSuggestions(false);
     onSearch(ticker);
   };
 
@@ -86,13 +102,13 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onSearch, isSearching }) => {
             <Input
               ref={inputRef}
               type="text"
-              placeholder="Enter NSE ticker, e.g. RELIANCE"
+              placeholder={stocksLoading ? "Loading stock list..." : "Enter NSE ticker, e.g. RELIANCE"}
               value={searchInput}
               onChange={handleInputChange}
               onKeyPress={handleKeyPress}
               onFocus={() => searchInput.trim().length > 0 && setShowSuggestions(true)}
               className="h-16 text-lg px-6 pr-16 glass-effect border-2 border-primary/30 focus:border-primary glow-effect rounded-2xl"
-              disabled={isSearching}
+              disabled={isSearching || stocksLoading}
             />
             <Search className="absolute right-6 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
             
@@ -100,12 +116,13 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onSearch, isSearching }) => {
               query={searchInput}
               onSelect={handleSuggestionSelect}
               isVisible={showSuggestions && !isSearching}
+              nseStocks={nseStocks}
             />
           </div>
           
           <Button
             onClick={handleSearch}
-            disabled={!searchInput.trim() || isSearching}
+            disabled={!searchInput.trim() || isSearching || stocksLoading}
             className="h-16 px-12 text-lg font-semibold bg-gradient-to-r from-primary to-mint hover:from-primary/90 hover:to-mint/90 transform hover:scale-110 transition-all duration-300 shadow-2xl hover:shadow-primary/50 glass-effect border border-primary/30 rounded-2xl text-white"
           >
             {isSearching ? '🔍 Analyzing...' : '🚀 Search'}
