@@ -1,6 +1,7 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const stocknotejsbridge = require('stocknotejsbridge');
+import { yahooFinanceService } from './yahooFinanceService';
 
 interface SamcoQuoteData {
   ltp: number;
@@ -79,7 +80,8 @@ export class SamcoService {
   
   async getQuote(symbol: string, exchange: string = 'NSE'): Promise<SamcoQuoteData | null> {
     if (this.authError) {
-      throw new Error(this.authError);
+      // Fallback to Yahoo Finance
+      return yahooFinanceService.getQuote(symbol);
     }
     if (!this.isLoggedIn) {
       // Attempt auto-login using environment variables so that clients don't need a separate login request.
@@ -90,10 +92,12 @@ export class SamcoService {
       if (userId && password && yob) {
         const loginOk = await this.login(userId, password, yob);
         if (!loginOk) {
-          throw new Error('Automatic login failed - please verify Samco API credentials');
+          // Fallback to Yahoo Finance
+          return yahooFinanceService.getQuote(symbol);
         }
       } else {
-        throw new Error('Authentication required - please set SAMCO_USER_ID, SAMCO_PASSWORD, SAMCO_YOB env variables');
+        // Fallback to Yahoo Finance
+        return yahooFinanceService.getQuote(symbol);
       }
     }
     
@@ -143,10 +147,12 @@ export class SamcoService {
         }
       }
       
-      return null;
+      // Fallback to Yahoo Finance if Samco returns null
+      return yahooFinanceService.getQuote(symbol);
     } catch (error) {
       console.error('Samco quote error:', error);
-      return null;
+      // Fallback to Yahoo Finance on error
+      return yahooFinanceService.getQuote(symbol);
     }
   }
   
@@ -157,7 +163,8 @@ export class SamcoService {
     toDate: string
   ): Promise<SamcoHistoricalCandle[] | null> {
     if (this.authError) {
-      throw new Error(this.authError);
+      // Fallback to Yahoo Finance
+      return yahooFinanceService.getHistoricalData(symbol, fromDate, toDate);
     }
     if (!this.isLoggedIn) {
       // Attempt auto-login using environment variables so that clients don't need a separate login request.
@@ -168,11 +175,12 @@ export class SamcoService {
       if (userId && password && yob) {
         const loginOk = await this.login(userId, password, yob);
         if (!loginOk) {
-          console.error('Automatic login failed during getHistoricalData call');
-          return []; // Return empty array on login failure
+          // Fallback to Yahoo Finance
+          return yahooFinanceService.getHistoricalData(symbol, fromDate, toDate);
         }
       } else {
-        throw new Error('Authentication required - please set SAMCO_USER_ID, SAMCO_PASSWORD, SAMCO_YOB env variables');
+        // Fallback to Yahoo Finance
+        return yahooFinanceService.getHistoricalData(symbol, fromDate, toDate);
       }
     }
     
@@ -205,14 +213,13 @@ export class SamcoService {
           }));
         }
       
-      // If status is 'Failure' or data is not in the expected format, return an empty array
-      console.log('No historical data found or API returned failure, returning empty array.');
-      return [];
-      
+      // If status is 'Failure' or data is not in the expected format, fallback to Yahoo Finance
+      console.log('No historical data found or API returned failure, falling back to Yahoo Finance.');
+      return yahooFinanceService.getHistoricalData(symbol, fromDate, toDate);
     } catch (error) {
       console.error('Samco historical data error:', error);
-      // On exception, also return empty array to prevent frontend from breaking.
-      return [];
+      // Fallback to Yahoo Finance on exception
+      return yahooFinanceService.getHistoricalData(symbol, fromDate, toDate);
     }
   }
 
@@ -224,7 +231,8 @@ export class SamcoService {
     interval: '15min' | '60min'
   ): Promise<SamcoHistoricalCandle[] | null> {
     if (this.authError) {
-      throw new Error(this.authError);
+      // Fallback to Yahoo Finance (daily candles)
+      return yahooFinanceService.getHistoricalData(symbol, fromDate, toDate);
     }
     if (!this.isLoggedIn) {
       // Ensure we are logged in and have a session token – reuse the same logic used by getQuote / getHistoricalData
@@ -235,10 +243,12 @@ export class SamcoService {
       if (userId && password && yob) {
         const loginOk = await this.login(userId, password, yob);
         if (!loginOk) {
-          throw new Error('Automatic login failed - please verify Samco API credentials');
+          // Fallback to Yahoo Finance (daily candles)
+          return yahooFinanceService.getHistoricalData(symbol, fromDate, toDate);
         }
       } else {
-        throw new Error('Authentication required - please set SAMCO_USER_ID, SAMCO_PASSWORD, SAMCO_YOB env variables');
+        // Fallback to Yahoo Finance (daily candles)
+        return yahooFinanceService.getHistoricalData(symbol, fromDate, toDate);
       }
     }
 
@@ -294,10 +304,12 @@ export class SamcoService {
         }
       }
 
-      throw new Error('No intraday data available from Samco API');
+      // Fallback to Yahoo Finance (daily candles)
+      return yahooFinanceService.getHistoricalData(symbol, fromDate, toDate);
     } catch (error) {
       console.error('Samco intraday data error:', error);
-      throw new Error('Unable to fetch intraday data from Samco API');
+      // Fallback to Yahoo Finance (daily candles)
+      return yahooFinanceService.getHistoricalData(symbol, fromDate, toDate);
     }
   }
 }

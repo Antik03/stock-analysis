@@ -3,6 +3,8 @@ import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import AnalysisCard from './AnalysisCard';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface AnalysisResult {
   title: string;
@@ -63,21 +65,23 @@ const LoadingState = () => {
 };
 
 const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results, overview, finalCommentary, isAnalyzing }) => {
-  const handleDownloadReport = () => {
-    // Create a simple text report
-    const reportContent = results.map(result => 
-      `${result.title}\n${'-'.repeat(result.title.length)}\n${result.content}\n\n`
-    ).join('');
-    
-    const blob = new Blob([reportContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'AI_Analysis_Report.txt';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const reportRef = React.useRef<HTMLDivElement>(null);
+
+  const handleDownloadReport = async () => {
+    if (!reportRef.current) return;
+    const input = reportRef.current;
+    // Use html2canvas to render the report section as an image, then add to PDF
+    const canvas = await html2canvas(input, { scale: 2, useCORS: true });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    // Calculate image dimensions to fit A4
+    const imgWidth = pageWidth - 40;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let y = 20;
+    pdf.addImage(imgData, 'PNG', 20, y, imgWidth, imgHeight);
+    pdf.save('AI_Analysis_Report.pdf');
   };
 
   if (isAnalyzing) {
@@ -86,56 +90,54 @@ const AnalysisResults: React.FC<AnalysisResultsProps> = ({ results, overview, fi
 
   return (
     <div className="fade-in-section">
-      <div className="mb-8 text-center">
-        <h2 className="text-3xl font-bold mb-2">AI Analysis Report</h2>
-        <p className="text-muted-foreground">Comprehensive insights powered by AI agent</p>
-      </div>
-      
-      {/* Full-width horizontal summary card */}
-      <div className="mb-8 glass-effect rounded-2xl p-6 border border-primary/20 bg-gradient-to-r from-card/50 to-card/30 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300">
-        <div className="flex items-center">
-          <div className="flex-1">
-            <div className="flex items-center mb-3">
-              <div className="text-2xl mr-3">🔍</div>
-              <h3 className="text-xl font-semibold text-foreground">Overview</h3>
+      <div ref={reportRef}>
+        <div className="mb-8 text-center">
+          <h2 className="text-3xl font-bold mb-2">AI Analysis Report</h2>
+          <p className="text-muted-foreground">Comprehensive insights powered by AI agent</p>
+        </div>
+        {/* Full-width horizontal summary card */}
+        <div className="mb-8 glass-effect rounded-2xl p-6 border border-primary/20 bg-gradient-to-r from-card/50 to-card/30 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300">
+          <div className="flex items-center">
+            <div className="flex-1">
+              <div className="flex items-center mb-3">
+                <div className="text-2xl mr-3">🔍</div>
+                <h3 className="text-xl font-semibold text-foreground">Overview</h3>
+              </div>
+              <div 
+                className="text-muted-foreground leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: overview || '' }}
+              />
             </div>
-            <div 
-              className="text-muted-foreground leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: overview || '' }}
+          </div>
+        </div>
+        {/* Grid of analysis cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {results.map((result, index) => (
+            <AnalysisCard
+              key={index}
+              title={result.title}
+              content={result.content}
+              icon={result.icon}
+              delay={index * 100}
             />
+          ))}
+        </div>
+        {/* Chart data summary card above download button */}
+        <div className="mb-8 glass-effect rounded-2xl p-6 border border-primary/20 bg-gradient-to-r from-card/50 to-card/30 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300">
+          <div className="flex items-center">
+            <div className="flex-1">
+              <div className="flex items-center mb-3">
+                <div className="text-2xl mr-3">🗣️</div>
+                <h3 className="text-xl font-semibold text-foreground">User Query</h3>
+              </div>
+              <div 
+                className="text-muted-foreground leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: finalCommentary || '' }}
+              />
+            </div>
           </div>
         </div>
       </div>
-      
-      {/* Grid of analysis cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {results.map((result, index) => (
-          <AnalysisCard
-            key={index}
-            title={result.title}
-            content={result.content}
-            icon={result.icon}
-            delay={index * 100}
-          />
-        ))}
-      </div>
-      
-      {/* Chart data summary card above download button */}
-      <div className="mb-8 glass-effect rounded-2xl p-6 border border-primary/20 bg-gradient-to-r from-card/50 to-card/30 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-all duration-300">
-        <div className="flex items-center">
-          <div className="flex-1">
-            <div className="flex items-center mb-3">
-              <div className="text-2xl mr-3">🗣️</div>
-              <h3 className="text-xl font-semibold text-foreground">User Query</h3>
-            </div>
-            <div 
-              className="text-muted-foreground leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: finalCommentary || '' }}
-            />
-          </div>
-        </div>
-      </div>
-      
       {/* Download button */}
       <div className="text-center">
         <Button
